@@ -52,17 +52,11 @@ Each report starts with a summary header (start/end time, duration, total/succes
 - **Maven 3.9+** (a Maven wrapper `./mvnw` is included)
 - Network reachability to both a DB2 instance and a MySQL instance
 - Optional: **Docker** / **Docker Compose** if you prefer the containerised run
-- The IBM **DB2 JDBC driver** — pulled via Maven (`com.ibm.db2:db2jcc4`). See below if your source server requires a different version.
+- The IBM **DB2 JDBC driver** (`com.ibm.db2:jcc`) — pulled from Maven Central. Pin a different version if needed:
 
-### About the DB2 JDBC driver
-
-The driver version is pinned in [`pom.xml`](pom.xml) (`db2-driver-version`) — `4.19.72` was chosen for compatibility with an older DB2 server. If your source DB2 is newer and requires a different driver, override the property:
-
-```bash
-./mvnw package -Ddb2-driver-version=11.5.9.0
-```
-
-If your organisation's Maven mirror doesn't carry the IBM driver, add IBM's Maven repository to `~/.m2/settings.xml` or install a vendor-supplied jar with `mvn install:install-file`.
+  ```bash
+  ./mvnw package -Ddb2-driver-version=11.5.8.0
+  ```
 
 ---
 
@@ -271,7 +265,7 @@ echo "testcontainers.reuse.enable=true" >> ~/.testcontainers.properties
 ## Troubleshooting
 
 - **`Couldn't read table csv file!`** — the tool could not find `data/tables.csv` in the working directory. When running with Docker, make sure you mounted `./data` to `/app/data` (the compose file already does this).
-- **Maven can't resolve `com.ibm.db2:db2jcc4`** — your Maven mirror may not carry IBM's driver. Add IBM's Maven repo to `~/.m2/settings.xml` or install a vendor-supplied jar locally with `mvn install:install-file`.
+- **Maven can't resolve `com.ibm.db2:jcc`** — check your `~/.m2/settings.xml` mirror configuration; the driver is on Maven Central.
 - **Random Data check is slow** — it reads `RANDOM_DATA_COUNT` rows per table from DB2. Lower it for quick smoke runs.
 - **Container can't reach local DBs on Linux** — `host.docker.internal` is not resolved by default; add `extra_hosts: ["host.docker.internal:host-gateway"]` to the compose service, or point the JDBC URLs at the real host/IP.
 - **`Column missing in MySQL` false positives** — the metadata check compares on column‑name equality; confirm both sides use matching casing (the MySQL query already upper‑cases names).

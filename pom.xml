@@ -49,8 +49,7 @@
 
   <properties>
     <java.version>21</java.version>
-    <db2-driver-version>4.19.72</db2-driver-version>
-    <!-- restricted, due to DB2 version -->
+    <db2-driver-version>11.5.9.0</db2-driver-version>
     <mysql.version>8.0.20</mysql.version>
     <lombok.version>1.18.38</lombok.version>
     <spotless.version>2.44.3</spotless.version>
@@ -68,7 +67,7 @@
     </dependency>
     <dependency>
       <groupId>com.ibm.db2</groupId>
-      <artifactId>db2jcc4</artifactId>
+      <artifactId>jcc</artifactId>
       <version>${db2-driver-version}</version>
     </dependency>
     <dependency>
