@@ -11,13 +11,17 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     environment:
-      - DB2_JDBC_URL=jdbc:db2://host.docker.internal:50000/SOURCEDB
-      - DB2_USERNAME=db2user
-      - DB2_PASSWORD=changeme
+      # source + target are DB-agnostic: set SOURCE_TYPE / TARGET_TYPE to
+      # either DB2 or MYSQL. The app picks the right JDBC driver automatically.
+      - SOURCE_TYPE=DB2
+      - SOURCE_JDBC_URL=jdbc:db2://host.docker.internal:50000/SOURCEDB
+      - SOURCE_USERNAME=db2user
+      - SOURCE_PASSWORD=changeme
 
-      - MYSQL_JDBC_URL=jdbc:mysql://host.docker.internal:3306/TARGETDB
-      - MYSQL_USERNAME=mysqluser
-      - MYSQL_PASSWORD=changeme
+      - TARGET_TYPE=MYSQL
+      - TARGET_JDBC_URL=jdbc:mysql://host.docker.internal:3306/TARGETDB
+      - TARGET_USERNAME=mysqluser
+      - TARGET_PASSWORD=changeme
 
       - ONLY_RUN_ROW_COUNT=false
       - ONLY_COLUMN_METADATA=false

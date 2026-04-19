@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/dbmigrationqualitychecker/db-migration-quality-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/dbmigrationqualitychecker/db-migration-quality-checker/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
+[![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://adoptium.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-6db33f.svg)](https://spring.io/projects/spring-boot)
 
 A Spring Boot tool that verifies the quality of a **DB2 → MySQL** data migration by running a suite of parallel comparison checks across two live databases and producing a human‑readable report per check type.
@@ -48,7 +48,7 @@ Each report starts with a summary header (start/end time, duration, total/succes
 
 ## Requirements
 
-- **Java 21**
+- **Java 25**
 - **Maven 3.9+** (a Maven wrapper `./mvnw` is included)
 - Network reachability to both a DB2 instance and a MySQL instance
 - Optional: **Docker** / **Docker Compose** if you prefer the containerised run
@@ -91,15 +91,18 @@ All settings are read from `src/main/resources/application.yml` and can be overr
 
 ### Database connections
 
+Source and target are DB-agnostic: set `SOURCE_TYPE` / `TARGET_TYPE` to either `DB2` or `MYSQL` and the app picks the right JDBC driver + dialect automatically.
+
 | Variable | Default | Description |
 |---|---|---|
-| `DB2_JDBC_URL` | `jdbc:db2://localhost:50000/SOURCEDB` | DB2 JDBC URL. |
-| `DB2_USERNAME` | `db2user` | DB2 user. |
-| `DB2_PASSWORD` | `changeme` | DB2 password. |
-| `MYSQL_JDBC_URL` | `jdbc:mysql://localhost:3306/TARGETDB` | MySQL JDBC URL. |
-| `MYSQL_USERNAME` | `mysqluser` | MySQL user. |
-| `MYSQL_PASSWORD` | `changeme` | MySQL password. |
-| `DB2_DEFAULT_SCHEMA` | `SOURCE_SCHEMA` | Default DB2 schema (informational). |
+| `SOURCE_TYPE` | `DB2` | Source database engine. One of `DB2`, `MYSQL`. |
+| `SOURCE_JDBC_URL` | `jdbc:db2://localhost:50000/SOURCEDB` | Source JDBC URL. |
+| `SOURCE_USERNAME` | `db2user` | Source user. |
+| `SOURCE_PASSWORD` | `changeme` | Source password. |
+| `TARGET_TYPE` | `MYSQL` | Target database engine. One of `DB2`, `MYSQL`. |
+| `TARGET_JDBC_URL` | `jdbc:mysql://localhost:3306/TARGETDB` | Target JDBC URL. |
+| `TARGET_USERNAME` | `mysqluser` | Target user. |
+| `TARGET_PASSWORD` | `changeme` | Target password. |
 
 ### Test selection / behaviour
 
@@ -156,10 +159,12 @@ ls report/
 # 2. Make sure data/tables.csv exists at the project root.
 
 # 3. Run, overriding any config via env vars.
-DB2_JDBC_URL="jdbc:db2://localhost:50000/SOURCEDB" \
-DB2_USERNAME=db2user DB2_PASSWORD=changeme \
-MYSQL_JDBC_URL="jdbc:mysql://localhost:3306/TARGETDB" \
-MYSQL_USERNAME=mysqluser MYSQL_PASSWORD=changeme \
+SOURCE_TYPE=DB2 \
+SOURCE_JDBC_URL="jdbc:db2://localhost:50000/SOURCEDB" \
+SOURCE_USERNAME=db2user SOURCE_PASSWORD=changeme \
+TARGET_TYPE=MYSQL \
+TARGET_JDBC_URL="jdbc:mysql://localhost:3306/TARGETDB" \
+TARGET_USERNAME=mysqluser TARGET_PASSWORD=changeme \
 RANDOM_DATA_COUNT=5000 \
 java -jar target/db-migration-quality-checker-1.0.0-SNAPSHOT.jar
 ```
@@ -177,10 +182,12 @@ ONLY_RUN_ROW_COUNT=true java -jar target/db-migration-quality-checker-1.0.0-SNAP
 ```bash
 docker build -f docker/Dockerfile -t db-migration-quality-checker:local .
 docker run --rm \
-  -e DB2_JDBC_URL="jdbc:db2://host.docker.internal:50000/SOURCEDB" \
-  -e DB2_USERNAME=db2user -e DB2_PASSWORD=changeme \
-  -e MYSQL_JDBC_URL="jdbc:mysql://host.docker.internal:3306/TARGETDB" \
-  -e MYSQL_USERNAME=mysqluser -e MYSQL_PASSWORD=changeme \
+  -e SOURCE_TYPE=DB2 \
+  -e SOURCE_JDBC_URL="jdbc:db2://host.docker.internal:50000/SOURCEDB" \
+  -e SOURCE_USERNAME=db2user -e SOURCE_PASSWORD=changeme \
+  -e TARGET_TYPE=MYSQL \
+  -e TARGET_JDBC_URL="jdbc:mysql://host.docker.internal:3306/TARGETDB" \
+  -e TARGET_USERNAME=mysqluser -e TARGET_PASSWORD=changeme \
   -v "$PWD/data:/app/data" \
   -v "$PWD/report:/app/report" \
   db-migration-quality-checker:local
@@ -228,7 +235,7 @@ select count(1) from SOURCE_SCHEMA.ORDERS
 ├── docker/
 │   ├── Dockerfile                 # Multi-stage: Maven build + Temurin 21 JRE
 │   └── docker-compose.yml         # Local build, env-driven DB connections
-├── pom.xml                        # Spring Boot 3.4, Java 21
+├── pom.xml                        # Spring Boot 3.4, Java 25
 ├── data/
 │   └── tables.csv                 # Runtime input: which tables to check
 ├── src/main/java/com/dbmigrationqualitychecker/

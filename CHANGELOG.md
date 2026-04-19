@@ -18,10 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration tests under `src/test/java/.../integration/` using Testcontainers (MySQL fast path + optional DB2 end-to-end), with reuse enabled so first boot is paid only once.
 
 ### Changed
+- Bumped minimum Java version from 21 to **25** (Temurin). CI, Docker base images, and docs updated accordingly.
+- JaCoCo bumped to 0.8.14 for Java 25 class-file support.
 - Moved `Dockerfile` and `docker-compose.yml` into `docker/`.
 - Docker image is now built locally via a multi-stage build; no private registry reference.
 - Replaced silent `e.printStackTrace()` calls with proper SLF4J error logging.
 - Test infrastructure: Lombok bumped to 1.18.38, Mockito configured to use the subclass mock maker for JDK 21+.
+- Refactored to DB-agnostic architecture: `DatabaseDialect` interface with `Db2Dialect` and `MySqlDialect`; a single `DatabaseRepository` parameterised by side (source/target). Config now uses `SOURCE_*`/`TARGET_*` env vars with a `type` (DB2 or MYSQL).
 
 ### Removed
 - Vendored `db2jcc4-4.19.72.jar` (proprietary, now pulled via Maven dep only).
