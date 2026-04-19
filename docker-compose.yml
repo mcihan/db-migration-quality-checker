@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  db-migration-quality-checker:
+    container_name: db-migration-quality-checker
+    build:
+      context: .
+    environment:
+      - DB2_JDBC_URL=jdbc:db2://host.docker.internal:50000/SOURCEDB
+      - DB2_USERNAME=db2user
+      - DB2_PASSWORD=changeme
+
+      - MYSQL_JDBC_URL=jdbc:mysql://host.docker.internal:3306/TARGETDB
+      - MYSQL_USERNAME=mysqluser
+      - MYSQL_PASSWORD=changeme
+
+      - ONLY_RUN_ROW_COUNT=false
+      - ONLY_COLUMN_METADATA=false
+      - ONLY_RANDOM_DATA=false
+
+      - RANDOM_DATA_COUNT=10000
+    volumes:
+      - ./data:/app/data
+      - ./report:/app/report

@@ -1,0 +1,4 @@
+SourceSchema,TargetSchema,TableName,PrimaryKeyName,QueryCondition,IsHexId
+SOURCE_SCHEMA,TARGET_DB,USERS,ID,,false
+SOURCE_SCHEMA,TARGET_DB,ORDERS,ID,,false
+SOURCE_SCHEMA,TARGET_DB,LOOKUP_TABLE,,,
