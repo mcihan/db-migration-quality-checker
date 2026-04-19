@@ -53,7 +53,7 @@
     <!-- restricted, due to DB2 version -->
     <mysql.version>8.0.20</mysql.version>
     <spotless.version>2.44.3</spotless.version>
-    <jacoco.version>0.8.12</jacoco.version>
+    <jacoco.version>0.8.14</jacoco.version>
   </properties>
 
   <dependencies>
