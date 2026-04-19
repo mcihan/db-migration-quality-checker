@@ -4,6 +4,7 @@ import com.dbmigrationqualitychecker.dialect.DatabaseDialect;
 import com.dbmigrationqualitychecker.dialect.DatabaseType;
 import com.dbmigrationqualitychecker.dialect.Db2Dialect;
 import com.dbmigrationqualitychecker.dialect.MySqlDialect;
+import com.dbmigrationqualitychecker.dialect.PostgresDialect;
 import com.dbmigrationqualitychecker.repository.DatabaseRepository;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -25,6 +26,7 @@ public class DataSourceConfig {
         return switch (type) {
             case DB2 -> new Db2Dialect();
             case MYSQL -> new MySqlDialect();
+            case POSTGRES -> new PostgresDialect();
         };
     }
 
