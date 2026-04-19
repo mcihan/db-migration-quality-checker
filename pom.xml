@@ -52,7 +52,7 @@
     <db2-driver-version>11.5.9.0</db2-driver-version>
     <mysql.version>8.0.30</mysql.version>
     <lombok.version>1.18.38</lombok.version>
-    <spotless.version>2.44.3</spotless.version>
+    <spotless.version>2.46.1</spotless.version>
     <jacoco.version>0.8.14</jacoco.version>
   </properties>
 
