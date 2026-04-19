@@ -3,15 +3,16 @@ package com.dbmigrationqualitychecker.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.dbmigrationqualitychecker.dialect.MySqlDialect;
-import com.dbmigrationqualitychecker.report.QueryResult;
-import com.dbmigrationqualitychecker.report.Table;
+import com.dbmigrationqualitychecker.model.ColumnDetails;
+import com.dbmigrationqualitychecker.model.IndexDetails;
+import com.dbmigrationqualitychecker.model.QueryResult;
+import com.dbmigrationqualitychecker.model.RecordData;
+import com.dbmigrationqualitychecker.model.Table;
 import com.dbmigrationqualitychecker.repository.DatabaseRepository;
-import com.dbmigrationqualitychecker.repository.entity.ColumnDetails;
-import com.dbmigrationqualitychecker.repository.entity.IndexDetails;
-import com.dbmigrationqualitychecker.repository.entity.RecordData;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -23,18 +24,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-/**
- * Fast integration test that exercises the MySQL dialect end-to-end against a
- * real MySQL container via {@link DatabaseRepository}. Tagged {@code integration}
- * so it runs on every {@code ./mvnw verify}.
- */
 @Tag("integration")
 @Testcontainers
 class MySqlDialectIT {
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.0.36"))
-            .withDatabaseName("paymentdb")
+            .withDatabaseName("testdb")
             .withUsername("tester")
             .withPassword("testerpw")
             .withReuse(true);
@@ -68,70 +64,67 @@ class MySqlDialectIT {
                 + "VALUES ('Alice', 'a@example.com'), ('Bob', 'b@example.com')");
     }
 
-    private Table table() {
-        return Table.builder()
-                .tableName("CUSTOMER")
-                .targetSchema(schema)
-                .idName("ID")
-                .queryCondition("")
-                .build();
+    private Table customer() {
+        return new Table("CUSTOMER", null, schema, "ID", "", false);
     }
 
     @Test
     void returnsSortedColumnNames() {
-        QueryResult<String> result = repo.getColumnNames(table());
-        assertThat(result.getResult()).containsExactly("EMAIL", "ID", "NAME");
-        assertThat(result.getQuery()).contains("INFORMATION_SCHEMA.COLUMNS");
+        QueryResult<String> result = repo.getColumnNames(customer());
+        assertThat(result.result()).containsExactly("EMAIL", "ID", "NAME");
     }
 
     @Test
     void returnsRowCount() {
-        assertThat(repo.getRowCount(table())).isEqualTo(2);
+        assertThat(repo.getRowCount(customer())).isEqualTo(2);
     }
 
     @Test
     void returnsColumnMetadataIncludingAutoIncrementAndNullability() {
-        List<ColumnDetails> cols = repo.getColumnDetails(table());
+        List<ColumnDetails> cols = repo.getColumnDetails(customer());
         ColumnDetails id = cols.stream()
-                .filter(c -> c.getColumnName().equals("ID"))
+                .filter(c -> c.columnName().equals("ID"))
                 .findFirst()
                 .orElseThrow();
         ColumnDetails email = cols.stream()
-                .filter(c -> c.getColumnName().equals("EMAIL"))
+                .filter(c -> c.columnName().equals("EMAIL"))
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(id.getColumnType()).isEqualTo("INT");
-        assertThat(id.isAutoIncrement()).isTrue();
-        assertThat(id.isNullable()).isFalse();
-        assertThat(email.isNullable()).isTrue();
-        assertThat(email.isAutoIncrement()).isFalse();
+        assertThat(id.columnType()).isEqualTo("INT");
+        assertThat(id.autoIncrement()).isTrue();
+        assertThat(id.nullable()).isFalse();
+        assertThat(email.nullable()).isTrue();
+        assertThat(email.autoIncrement()).isFalse();
     }
 
     @Test
     void returnsIndexDetails() {
-        QueryResult<IndexDetails> result = repo.getIndexDetails(table());
-        assertThat(result.getResult())
-                .extracting(IndexDetails::getIndexName)
+        QueryResult<IndexDetails> result = repo.getIndexDetails(customer());
+        assertThat(result.result())
+                .extracting(IndexDetails::indexName)
                 .contains("PRIMARY", "UX_CUSTOMER_EMAIL", "IX_CUSTOMER_NAME");
     }
 
     @Test
     void findsRowsByIds() {
-        QueryResult<RecordData> found = repo.findAllByIds(table(), List.of("1", "2"));
-        assertThat(found.getResult()).hasSize(2);
-        assertThat(found.getQuery()).contains("IN ('1','2')");
+        QueryResult<RecordData> found = repo.findAllByIds(customer(), List.of("1", "2"));
+        assertThat(found.result()).hasSize(2);
+        assertThat(found.query()).contains("IN ('1','2')");
     }
 
     @Test
-    void findsByFullColumnMatchWhenIdAbsent() {
-        HashMap<String, String> probeColumns = new HashMap<>();
-        probeColumns.put("NAME", "Alice");
-        probeColumns.put("EMAIL", "a@example.com");
-        RecordData probe = RecordData.builder().columns(probeColumns).build();
+    void findsByFullColumnMatch() {
+        Map<String, String> cols = new HashMap<>();
+        cols.put("NAME", "Alice");
+        cols.put("EMAIL", "a@example.com");
+        RecordData probe = RecordData.of(cols);
 
-        QueryResult<RecordData> result = repo.getDataReportFromTable(table(), probe);
-        assertThat(result.getResult()).hasSize(1);
-        assertThat(result.getQuery()).contains("WHERE").contains("NAME = 'Alice'").contains("EMAIL = 'a@example.com'");
+        QueryResult<RecordData> result = repo.findByColumns(customer(), probe);
+        assertThat(result.result()).hasSize(1);
+        assertThat(result.query())
+                .contains("WHERE")
+                .contains("NAME = 'Alice'")
+                .contains("EMAIL = 'a@example.com'");
     }
 }

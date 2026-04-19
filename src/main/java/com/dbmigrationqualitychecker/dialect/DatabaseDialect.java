@@ -1,19 +1,17 @@
 package com.dbmigrationqualitychecker.dialect;
 
-import com.dbmigrationqualitychecker.report.QueryResult;
-import com.dbmigrationqualitychecker.repository.entity.ColumnDetails;
-import com.dbmigrationqualitychecker.repository.entity.IndexDetails;
-import com.dbmigrationqualitychecker.repository.entity.RecordData;
+import com.dbmigrationqualitychecker.model.ColumnDetails;
+import com.dbmigrationqualitychecker.model.IndexDetails;
+import com.dbmigrationqualitychecker.model.QueryResult;
+import com.dbmigrationqualitychecker.model.RecordData;
 import java.util.List;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 /**
- * Encapsulates every SQL dialect difference between the supported databases.
+ * Encapsulates every SQL-dialect difference between the supported databases.
  *
- * <p>Implementations own the DB-specific system-catalog queries, pagination
- * syntax, and any value conversions (e.g. UUIDs stored as binary). The generic
- * {@link com.dbmigrationqualitychecker.repository.DatabaseRepository} delegates
- * every call to a dialect so services stay DB-agnostic.
+ * <p>Adding a third engine (Postgres, Oracle, …) is just a new implementation
+ * plus a case in {@link DatabaseType}.
  */
 public interface DatabaseDialect {
 
@@ -41,8 +39,8 @@ public interface DatabaseDialect {
             String tableName,
             String idName,
             List<String> ids,
-            boolean isHexId);
+            boolean hexId);
 
-    QueryResult<RecordData> getDataReportFromTable(
+    QueryResult<RecordData> findByColumns(
             NamedParameterJdbcTemplate jdbc, String schema, String tableName, RecordData record);
 }
