@@ -1,12 +1,18 @@
 package com.dbmigrationqualitychecker.integration;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.dbmigrationqualitychecker.dialect.MySqlDialect;
 import com.dbmigrationqualitychecker.report.QueryResult;
 import com.dbmigrationqualitychecker.report.Table;
-import com.dbmigrationqualitychecker.repository.MySqlRepository;
+import com.dbmigrationqualitychecker.repository.DatabaseRepository;
 import com.dbmigrationqualitychecker.repository.entity.ColumnDetails;
 import com.dbmigrationqualitychecker.repository.entity.IndexDetails;
 import com.dbmigrationqualitychecker.repository.entity.RecordData;
 import com.zaxxer.hikari.HikariDataSource;
+import java.util.HashMap;
+import java.util.List;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,19 +23,14 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import javax.sql.DataSource;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
- * Fast integration test that verifies the MySQL side of the checker against a
- * real MySQL container. Tagged only {@code integration} (not {@code slow}) so
- * it runs on every {@code ./mvnw verify}.
+ * Fast integration test that exercises the MySQL dialect end-to-end against a
+ * real MySQL container via {@link DatabaseRepository}. Tagged {@code integration}
+ * so it runs on every {@code ./mvnw verify}.
  */
 @Tag("integration")
 @Testcontainers
-class MySqlRepositoryIT {
+class MySqlDialectIT {
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.0.36"))
@@ -38,7 +39,7 @@ class MySqlRepositoryIT {
             .withPassword("testerpw")
             .withReuse(true);
 
-    private static MySqlRepository repo;
+    private static DatabaseRepository repo;
     private static String schema;
 
     @BeforeAll
@@ -51,23 +52,29 @@ class MySqlRepositoryIT {
         ds.setMaximumPoolSize(4);
 
         NamedParameterJdbcTemplate tpl = new NamedParameterJdbcTemplate((DataSource) ds);
-        repo = new MySqlRepository(tpl);
+        repo = new DatabaseRepository(tpl, new MySqlDialect(), DatabaseRepository.Side.TARGET, 100);
         schema = MYSQL.getDatabaseName();
 
         JdbcTemplate jdbc = tpl.getJdbcTemplate();
         jdbc.execute("DROP TABLE IF EXISTS CUSTOMER");
-        jdbc.execute("CREATE TABLE CUSTOMER (" +
-                "ID INT NOT NULL AUTO_INCREMENT," +
-                "NAME VARCHAR(50) NOT NULL," +
-                "EMAIL VARCHAR(100)," +
-                "PRIMARY KEY (ID)," +
-                "UNIQUE KEY UX_CUSTOMER_EMAIL (EMAIL)," +
-                "KEY IX_CUSTOMER_NAME (NAME))");
-        jdbc.execute("INSERT INTO CUSTOMER (NAME, EMAIL) VALUES ('Alice', 'a@example.com'), ('Bob', 'b@example.com')");
+        jdbc.execute("CREATE TABLE CUSTOMER ("
+                + "ID INT NOT NULL AUTO_INCREMENT,"
+                + "NAME VARCHAR(50) NOT NULL,"
+                + "EMAIL VARCHAR(100),"
+                + "PRIMARY KEY (ID),"
+                + "UNIQUE KEY UX_CUSTOMER_EMAIL (EMAIL),"
+                + "KEY IX_CUSTOMER_NAME (NAME))");
+        jdbc.execute("INSERT INTO CUSTOMER (NAME, EMAIL) "
+                + "VALUES ('Alice', 'a@example.com'), ('Bob', 'b@example.com')");
     }
 
     private Table table() {
-        return Table.builder().tableName("CUSTOMER").targetSchema(schema).idName("ID").queryCondition("").build();
+        return Table.builder()
+                .tableName("CUSTOMER")
+                .targetSchema(schema)
+                .idName("ID")
+                .queryCondition("")
+                .build();
     }
 
     @Test
@@ -85,8 +92,14 @@ class MySqlRepositoryIT {
     @Test
     void returnsColumnMetadataIncludingAutoIncrementAndNullability() {
         List<ColumnDetails> cols = repo.getColumnDetails(table());
-        ColumnDetails id = cols.stream().filter(c -> c.getColumnName().equals("ID")).findFirst().orElseThrow();
-        ColumnDetails email = cols.stream().filter(c -> c.getColumnName().equals("EMAIL")).findFirst().orElseThrow();
+        ColumnDetails id = cols.stream()
+                .filter(c -> c.getColumnName().equals("ID"))
+                .findFirst()
+                .orElseThrow();
+        ColumnDetails email = cols.stream()
+                .filter(c -> c.getColumnName().equals("EMAIL"))
+                .findFirst()
+                .orElseThrow();
 
         assertThat(id.getColumnType()).isEqualTo("INT");
         assertThat(id.isAutoIncrement()).isTrue();
@@ -98,7 +111,8 @@ class MySqlRepositoryIT {
     @Test
     void returnsIndexDetails() {
         QueryResult<IndexDetails> result = repo.getIndexDetails(table());
-        assertThat(result.getResult()).extracting(IndexDetails::getIndexName)
+        assertThat(result.getResult())
+                .extracting(IndexDetails::getIndexName)
                 .contains("PRIMARY", "UX_CUSTOMER_EMAIL", "IX_CUSTOMER_NAME");
     }
 
@@ -111,10 +125,10 @@ class MySqlRepositoryIT {
 
     @Test
     void findsByFullColumnMatchWhenIdAbsent() {
-        RecordData probe = RecordData.builder().columns(new java.util.HashMap<>(java.util.Map.of(
-                "NAME", "Alice",
-                "EMAIL", "a@example.com"
-        ))).build();
+        HashMap<String, String> probeColumns = new HashMap<>();
+        probeColumns.put("NAME", "Alice");
+        probeColumns.put("EMAIL", "a@example.com");
+        RecordData probe = RecordData.builder().columns(probeColumns).build();
 
         QueryResult<RecordData> result = repo.getDataReportFromTable(table(), probe);
         assertThat(result.getResult()).hasSize(1);

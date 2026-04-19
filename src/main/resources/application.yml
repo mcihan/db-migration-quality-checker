@@ -1,17 +1,14 @@
 datasource:
-  db2:
-    jdbc-url: ${DB2_JDBC_URL:jdbc:db2://localhost:50000/SOURCEDB}
-    username: ${DB2_USERNAME:db2user}
-    password: ${DB2_PASSWORD:changeme}
-    driver-class-name: com.ibm.db2.jcc.DB2Driver
-    maximum-pool-size: 100
-
-  mysql:
-    jdbc-url: ${MYSQL_JDBC_URL:jdbc:mysql://localhost:3306/TARGETDB}
-    username: ${MYSQL_USERNAME:mysqluser}
-    password: ${MYSQL_PASSWORD:changeme}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    maximum-pool-size: 100
+  source:
+    type: ${SOURCE_TYPE:DB2}
+    jdbc-url: ${SOURCE_JDBC_URL:jdbc:db2://localhost:50000/SOURCEDB}
+    username: ${SOURCE_USERNAME:db2user}
+    password: ${SOURCE_PASSWORD:changeme}
+  target:
+    type: ${TARGET_TYPE:MYSQL}
+    jdbc-url: ${TARGET_JDBC_URL:jdbc:mysql://localhost:3306/TARGETDB}
+    username: ${TARGET_USERNAME:mysqluser}
+    password: ${TARGET_PASSWORD:changeme}
 
 config:
   only-row-count: ${ONLY_RUN_ROW_COUNT:false}
@@ -19,5 +16,4 @@ config:
   only-column-metadata: ${ONLY_COLUMN_METADATA:false}
   random-data-count: ${RANDOM_DATA_COUNT:10000}
 
-db2-default-schema: ${DB2_DEFAULT_SCHEMA:SOURCE_SCHEMA}
 is-injected-table-file: ${IS_INJECTED_TABLE_FILE_ACTIVE:false}

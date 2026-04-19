@@ -1,0 +1,70 @@
+version: '3.8'
+
+# Local test stack: spins up DB2 (source) and MySQL (target) with sample
+# schemas and data so you can exercise db-migration-quality-checker end-to-end.
+#
+# Usage:
+#   ./scripts/run-local-check.sh
+#
+# Or manually:
+#   cd docker && docker compose -f docker-compose.local.yml up -d
+#   ./scripts/run-local-check.sh --skip-up     # once DB2 is ready (~5-10 min first boot)
+
+services:
+  db2:
+    image: icr.io/db2_community/db2:11.5.9.0
+    container_name: dbqc-db2
+    platform: linux/amd64
+    privileged: true
+    ports:
+      - "50000:50000"
+    environment:
+      LICENSE: accept
+      DB2INST1_PASSWORD: changeme
+      DBNAME: SOURCEDB
+      BLU: "false"
+      ENABLE_ORACLE_COMPATIBILITY: "false"
+      UPDATEAVAIL: "NO"
+      TO_CREATE_SAMPLEDB: "false"
+      REPODB: "false"
+      IS_OSXFS: "true"
+      PERSISTENT_HOME: "true"
+      HADR_ENABLED: "false"
+      ETCD_ENDPOINT: ""
+      ETCD_USERNAME: ""
+      ETCD_PASSWORD: ""
+    volumes:
+      - db2-data:/database
+      - ./seed/db2:/seed:ro
+    healthcheck:
+      # Container is ready once SOURCEDB accepts connections.
+      test: ["CMD-SHELL", "su - db2inst1 -c 'db2 connect to SOURCEDB' >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 60
+      start_period: 180s
+
+  mysql:
+    image: mysql:8.0.36
+    container_name: dbqc-mysql
+#    platform: linux/amd64
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: TARGET_DB
+      MYSQL_USER: mysqluser
+      MYSQL_PASSWORD: changeme
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./seed/mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpw"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  db2-data:
+  mysql-data:

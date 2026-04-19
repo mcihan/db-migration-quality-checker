@@ -5,7 +5,7 @@ Thanks for your interest in contributing to **db-migration-quality-checker**.
 ## Quick start
 
 1. Fork the repo and clone your fork.
-2. Make sure you have **JDK 21** and **Docker** (for integration tests) installed.
+2. Make sure you have **JDK 25** and **Docker** (for integration tests) installed.
 3. Build and run unit tests:
    ```bash
    ./mvnw test

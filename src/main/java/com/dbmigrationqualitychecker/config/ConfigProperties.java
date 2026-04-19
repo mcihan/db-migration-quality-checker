@@ -1,39 +1,42 @@
 package com.dbmigrationqualitychecker.config;
 
+import com.dbmigrationqualitychecker.dialect.DatabaseType;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@Slf4j
 public class ConfigProperties {
 
-    @Value("${datasource.db2.jdbc-url}")
-    private String db2JdbcUrl;
+    @Value("${datasource.source.type}")
+    private DatabaseType sourceType;
 
-    @Value("${datasource.db2.username}")
-    private String db2username;
-    @Value("${datasource.db2.password}")
-    private String db2password;
+    @Value("${datasource.source.jdbc-url}")
+    private String sourceJdbcUrl;
 
-    @Value("${datasource.mysql.jdbc-url}")
-    private String mysqlJdbcUrl;
+    @Value("${datasource.source.username}")
+    private String sourceUsername;
 
-    @Value("${datasource.mysql.username}")
-    private String mysqlusername;
+    @Value("${datasource.target.type}")
+    private DatabaseType targetType;
 
-    @Value("${datasource.mysql.password}")
-    private String mysqlpassword;
+    @Value("${datasource.target.jdbc-url}")
+    private String targetJdbcUrl;
 
+    @Value("${datasource.target.username}")
+    private String targetUsername;
 
     @PostConstruct
     void init() {
-        System.out.println("**************************************");
-        System.out.println("**************************************");
-        System.out.println("db2JdbcUrl = " + db2JdbcUrl);
-        System.out.println("db2username = " + db2username);
-        System.out.println("mysqlJdbcUrl = " + mysqlJdbcUrl);
-        System.out.println("mysqlusername = " + mysqlusername);
-        System.out.println("**************************************");
-        System.out.println("**************************************");
+        log.info("**************************************");
+        log.info("source type     = {}", sourceType);
+        log.info("source jdbc-url = {}", sourceJdbcUrl);
+        log.info("source username = {}", sourceUsername);
+        log.info("target type     = {}", targetType);
+        log.info("target jdbc-url = {}", targetJdbcUrl);
+        log.info("target username = {}", targetUsername);
+        log.info("**************************************");
     }
 }
