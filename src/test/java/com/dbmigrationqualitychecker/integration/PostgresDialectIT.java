@@ -2,7 +2,7 @@ package com.dbmigrationqualitychecker.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.dbmigrationqualitychecker.dialect.MySqlDialect;
+import com.dbmigrationqualitychecker.dialect.PostgresDialect;
 import com.dbmigrationqualitychecker.model.ColumnDetails;
 import com.dbmigrationqualitychecker.model.IndexDetails;
 import com.dbmigrationqualitychecker.model.QueryResult;
@@ -19,53 +19,53 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 @Tag("integration")
 @Testcontainers
-class MySqlDialectIT {
+class PostgresDialectIT {
 
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.0.36"))
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(DockerImageName.parse("postgres:16-alpine"))
             .withDatabaseName("testdb")
             .withUsername("tester")
             .withPassword("testerpw")
             .withReuse(true);
 
     private static DatabaseRepository repo;
-    private static String schema;
+    private static final String SCHEMA = "public";
 
     @BeforeAll
     static void setUp() {
         HikariDataSource ds = new HikariDataSource();
-        ds.setJdbcUrl(MYSQL.getJdbcUrl());
-        ds.setUsername(MYSQL.getUsername());
-        ds.setPassword(MYSQL.getPassword());
-        ds.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        ds.setJdbcUrl(POSTGRES.getJdbcUrl());
+        ds.setUsername(POSTGRES.getUsername());
+        ds.setPassword(POSTGRES.getPassword());
+        ds.setDriverClassName("org.postgresql.Driver");
         ds.setMaximumPoolSize(4);
 
         NamedParameterJdbcTemplate tpl = new NamedParameterJdbcTemplate((DataSource) ds);
-        repo = new DatabaseRepository(tpl, new MySqlDialect(), DatabaseRepository.Side.TARGET, 100);
-        schema = MYSQL.getDatabaseName();
+        repo = new DatabaseRepository(tpl, new PostgresDialect(), DatabaseRepository.Side.TARGET, 100);
 
         JdbcTemplate jdbc = tpl.getJdbcTemplate();
-        jdbc.execute("DROP TABLE IF EXISTS CUSTOMER");
-        jdbc.execute("CREATE TABLE CUSTOMER ("
-                + "ID INT NOT NULL AUTO_INCREMENT,"
-                + "NAME VARCHAR(50) NOT NULL,"
-                + "EMAIL VARCHAR(100),"
-                + "PRIMARY KEY (ID),"
-                + "UNIQUE KEY UX_CUSTOMER_EMAIL (EMAIL),"
-                + "KEY IX_CUSTOMER_NAME (NAME))");
-        jdbc.execute("INSERT INTO CUSTOMER (NAME, EMAIL) "
-                + "VALUES ('Alice', 'a@example.com'), ('Bob', 'b@example.com')");
+        jdbc.execute("DROP TABLE IF EXISTS customer");
+        jdbc.execute(
+                """
+                CREATE TABLE customer (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(50) NOT NULL,
+                    email VARCHAR(100) UNIQUE
+                )""");
+        jdbc.execute("CREATE INDEX ix_customer_name ON customer (name)");
+        jdbc.execute(
+                "INSERT INTO customer (name, email) VALUES ('Alice', 'a@example.com'), ('Bob', 'b@example.com')");
     }
 
     private Table customer() {
-        return new Table("CUSTOMER", null, schema, "ID", "", false);
+        return new Table("customer", null, SCHEMA, "id", "", false);
     }
 
     @Test
@@ -80,7 +80,7 @@ class MySqlDialectIT {
     }
 
     @Test
-    void returnsColumnMetadataIncludingAutoIncrementAndNullability() {
+    void columnMetadataUsesCanonicalTypeNames() {
         List<ColumnDetails> cols = repo.getColumnDetails(customer());
         ColumnDetails id = cols.stream()
                 .filter(c -> c.columnName().equals("ID"))
@@ -94,16 +94,17 @@ class MySqlDialectIT {
         assertThat(id.columnType()).isEqualTo("INT");
         assertThat(id.autoIncrement()).isTrue();
         assertThat(id.nullable()).isFalse();
+        assertThat(email.columnType()).isEqualTo("VARCHAR");
         assertThat(email.nullable()).isTrue();
         assertThat(email.autoIncrement()).isFalse();
     }
 
     @Test
-    void returnsIndexDetails() {
+    void indexDetailsCoversPrimaryAndSecondary() {
         QueryResult<IndexDetails> result = repo.getIndexDetails(customer());
         assertThat(result.result())
-                .extracting(IndexDetails::indexName)
-                .contains("PRIMARY", "UX_CUSTOMER_EMAIL", "IX_CUSTOMER_NAME");
+                .extracting(IndexDetails::columnNames)
+                .contains("id", "name", "email");
     }
 
     @Test
@@ -116,15 +117,12 @@ class MySqlDialectIT {
     @Test
     void findsByFullColumnMatch() {
         Map<String, String> cols = new HashMap<>();
-        cols.put("NAME", "Alice");
-        cols.put("EMAIL", "a@example.com");
+        cols.put("name", "Alice");
+        cols.put("email", "a@example.com");
         RecordData probe = RecordData.of(cols);
 
         QueryResult<RecordData> result = repo.findByColumns(customer(), probe);
         assertThat(result.result()).hasSize(1);
-        assertThat(result.query())
-                .contains("WHERE")
-                .contains("NAME = 'Alice'")
-                .contains("EMAIL = 'a@example.com'");
+        assertThat(result.query()).contains("WHERE").contains("name = 'Alice'");
     }
 }

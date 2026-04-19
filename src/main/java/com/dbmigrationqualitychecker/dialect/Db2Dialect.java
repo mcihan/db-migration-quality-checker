@@ -1,14 +1,15 @@
 package com.dbmigrationqualitychecker.dialect;
 
-import com.dbmigrationqualitychecker.report.QueryResult;
+import com.dbmigrationqualitychecker.model.ColumnDetails;
+import com.dbmigrationqualitychecker.model.IndexDetails;
+import com.dbmigrationqualitychecker.model.QueryResult;
+import com.dbmigrationqualitychecker.model.RecordData;
 import com.dbmigrationqualitychecker.repository.UUIDConverter;
-import com.dbmigrationqualitychecker.repository.entity.ColumnDetails;
-import com.dbmigrationqualitychecker.repository.entity.IndexDetails;
-import com.dbmigrationqualitychecker.repository.entity.RecordData;
-import com.dbmigrationqualitychecker.util.RowMapUtils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.jdbc.core.RowMapper;
@@ -18,7 +19,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 @Slf4j
 public class Db2Dialect implements DatabaseDialect {
 
-    private static final String DRIVER_CLASS_NAME = "com.ibm.db2.jcc.DB2Driver";
+    private static final String DRIVER = "com.ibm.db2.jcc.DB2Driver";
+    private static final String CHAR_FOR_BIT_DATA = "CHAR FOR BIT DATA";
 
     @Override
     public DatabaseType type() {
@@ -27,19 +29,21 @@ public class Db2Dialect implements DatabaseDialect {
 
     @Override
     public String driverClassName() {
-        return DRIVER_CLASS_NAME;
+        return DRIVER;
     }
 
     @Override
     public QueryResult<String> getColumnNames(NamedParameterJdbcTemplate jdbc, String schema, String tableName) {
-        String query = String.format(
-                "SELECT COLNAME AS COLUMN_NAME FROM SYSCAT.COLUMNS "
-                        + "WHERE TABSCHEMA = '%s' AND TABNAME = '%s' ORDER BY COLNAME ASC",
+        String sql = String.format(
+                """
+                SELECT COLNAME AS COLUMN_NAME FROM SYSCAT.COLUMNS
+                WHERE TABSCHEMA = '%s' AND TABNAME = '%s'
+                ORDER BY COLNAME ASC""",
                 schema, tableName);
-        List<String> columns = jdbc.query(
-                query, new MapSqlParameterSource(), (rs, rowNum) -> rs.getString("COLUMN_NAME"));
+        List<String> columns =
+                jdbc.query(sql, new MapSqlParameterSource(), (rs, i) -> rs.getString("COLUMN_NAME"));
         Collections.sort(columns);
-        return QueryResult.<String>builder().result(columns).query(query).tableName(tableName).build();
+        return QueryResult.of(sql, tableName, columns);
     }
 
     @Override
@@ -55,7 +59,7 @@ public class Db2Dialect implements DatabaseDialect {
                 FROM SYSCAT.COLUMNS
                 WHERE TABSCHEMA = '%s' AND TABNAME = '%s'""",
                 schema, tableName);
-        return jdbc.query(sql, new MapSqlParameterSource(), RowMapUtils.columnDetailsRowMapper);
+        return jdbc.query(sql, new MapSqlParameterSource(), COLUMN_DETAILS_MAPPER);
     }
 
     @Override
@@ -70,35 +74,33 @@ public class Db2Dialect implements DatabaseDialect {
                 WHERE INDSCHEMA = '%s' AND TABNAME = '%s'
                 """,
                 schema, tableName);
-        List<IndexDetails> result = jdbc.query(sql, new MapSqlParameterSource(), RowMapUtils.indexDetailsRowMapper);
-        return QueryResult.<IndexDetails>builder().query(sql).result(result).build();
+        List<IndexDetails> result = jdbc.query(sql, new MapSqlParameterSource(), INDEX_DETAILS_MAPPER);
+        return QueryResult.of(sql, tableName, result);
     }
 
     @Override
     public int getRowCount(NamedParameterJdbcTemplate jdbc, String schema, String tableName, String whereClause) {
         String where = whereClause == null ? "" : whereClause;
-        String query = String.format(
-                "SELECT count_big(1) AS COUNT FROM %s.%s %s WITH UR", schema, tableName, where);
-        Integer result = jdbc.queryForObject(query, new MapSqlParameterSource(), Integer.class);
+        String sql = String.format("SELECT count_big(1) AS COUNT FROM %s.%s %s WITH UR", schema, tableName, where);
+        Integer result = jdbc.queryForObject(sql, new MapSqlParameterSource(), Integer.class);
         return result == null ? 0 : result;
     }
 
     @Override
     public QueryResult<RecordData> getRandomData(
             NamedParameterJdbcTemplate jdbc, String schema, String tableName, String idName, int limit) {
-        String query =
-                String.format("SELECT * FROM %s.%s FETCH FIRST %d ROWS ONLY", schema, tableName, limit);
-        List<RecordData> result = jdbc.query(query, new MapSqlParameterSource(), rowsWithIdMapper(idName));
-        return QueryResult.<RecordData>builder().query(query).result(result).build();
+        String sql = String.format("SELECT * FROM %s.%s FETCH FIRST %d ROWS ONLY", schema, tableName, limit);
+        List<RecordData> rows = jdbc.query(sql, new MapSqlParameterSource(), rowMapperWithId(idName));
+        return QueryResult.of(sql, tableName, rows);
     }
 
     @Override
     public QueryResult<RecordData> getDataFromTable(
             NamedParameterJdbcTemplate jdbc, String schema, String tableName, int limit) {
-        String query = String.format(
+        String sql = String.format(
                 "SELECT * FROM %s.%s FETCH FIRST %d ROWS ONLY WITH UR", schema, tableName, limit);
-        List<RecordData> result = jdbc.query(query, new MapSqlParameterSource(), fullRowMapper());
-        return QueryResult.<RecordData>builder().query(query).result(result).build();
+        List<RecordData> rows = jdbc.query(sql, new MapSqlParameterSource(), fullRowMapper());
+        return QueryResult.of(sql, tableName, rows);
     }
 
     @Override
@@ -108,19 +110,57 @@ public class Db2Dialect implements DatabaseDialect {
             String tableName,
             String idName,
             List<String> ids,
-            boolean isHexId) {
-        String idList = ids.stream().map(id -> "'" + id + "'").toList().toString().replace("[", "(").replace("]", ")");
-        String query = String.format("SELECT * FROM %s.%s WHERE %s IN %s", schema, tableName, idName, idList);
-        List<RecordData> result = jdbc.query(query, new MapSqlParameterSource(), rowsWithIdMapper(idName));
-        return QueryResult.<RecordData>builder().tableName(tableName).query(query).result(result).build();
+            boolean hexId) {
+        String idList = ids.stream().map(id -> "'" + id + "'").collect(Collectors.joining(",", "(", ")"));
+        String sql = String.format("SELECT * FROM %s.%s WHERE %s IN %s", schema, tableName, idName, idList);
+        List<RecordData> rows = jdbc.query(sql, new MapSqlParameterSource(), rowMapperWithId(idName));
+        return QueryResult.of(sql, tableName, rows);
     }
 
     @Override
-    public QueryResult<RecordData> getDataReportFromTable(
+    public QueryResult<RecordData> findByColumns(
             NamedParameterJdbcTemplate jdbc, String schema, String tableName, RecordData record) {
+        String sql = buildWhereByColumns(schema, tableName, record.columns());
+        List<RecordData> rows = jdbc.query(sql, new MapSqlParameterSource(), fullRowMapper());
+        return QueryResult.of(sql, tableName, rows);
+    }
+
+    private RowMapper<RecordData> rowMapperWithId(String idName) {
+        return (rs, rowNum) -> {
+            Map<String, String> cols = new HashMap<>();
+            int count = rs.getMetaData().getColumnCount();
+            for (int i = 1; i <= count; i++) {
+                String name = rs.getMetaData().getColumnName(i);
+                String typeName = rs.getMetaData().getColumnTypeName(i);
+                String value = String.valueOf(rs.getString(i));
+                if (CHAR_FOR_BIT_DATA.equals(typeName) && StringUtils.isNotBlank(rs.getString(i))) {
+                    try {
+                        value = UUIDConverter.fromBytes(rs.getBytes(i)).toString();
+                    } catch (Exception e) {
+                        log.info("CHAR→UUID conversion failed for {}.{}", rs.getMetaData().getTableName(i), name);
+                    }
+                }
+                cols.put(name.toUpperCase(), value);
+            }
+            return new RecordData(idName == null ? null : rs.getString(idName), cols);
+        };
+    }
+
+    private RowMapper<RecordData> fullRowMapper() {
+        return (rs, rowNum) -> {
+            Map<String, String> cols = new HashMap<>();
+            int count = rs.getMetaData().getColumnCount();
+            for (int i = 1; i <= count; i++) {
+                cols.put(rs.getMetaData().getColumnName(i), rs.getString(i));
+            }
+            return RecordData.of(cols);
+        };
+    }
+
+    static String buildWhereByColumns(String schema, String tableName, Map<String, String> columns) {
         StringBuilder sql = new StringBuilder(String.format("SELECT * FROM %s.%s WHERE ", schema, tableName));
         boolean first = true;
-        for (var entry : record.getColumns().entrySet()) {
+        for (Map.Entry<String, String> entry : columns.entrySet()) {
             if (!first) {
                 sql.append(" AND ");
             }
@@ -132,45 +172,29 @@ public class Db2Dialect implements DatabaseDialect {
                 sql.append(" = ").append(String.format("'%s'", entry.getValue()));
             }
         }
-        List<RecordData> result = jdbc.query(sql.toString(), new MapSqlParameterSource(), fullRowMapper());
-        return QueryResult.<RecordData>builder().query(sql.toString()).result(result).build();
+        return sql.toString();
     }
 
-    private RowMapper<RecordData> rowsWithIdMapper(String idName) {
-        return (rs, rowNum) -> {
-            HashMap<String, String> columnsWithValue = new HashMap<>();
-            int columnCount = rs.getMetaData().getColumnCount();
-            for (int i = 1; i <= columnCount; i++) {
-                String columnName = rs.getMetaData().getColumnName(i);
-                String columnTypeName = rs.getMetaData().getColumnTypeName(i);
-                String columnValue = String.valueOf(rs.getString(i));
-                if ("CHAR FOR BIT DATA".equals(columnTypeName) && StringUtils.isNotBlank(rs.getString(i))) {
-                    try {
-                        columnValue = UUIDConverter.fromBytes(rs.getBytes(i)).toString();
-                    } catch (Exception e) {
-                        log.info(
-                                "CHAR conversion error for table:{}, column:{}",
-                                rs.getMetaData().getTableName(i),
-                                columnName);
-                    }
-                }
-                columnsWithValue.put(columnName.toUpperCase(), columnValue);
-            }
-            return RecordData.builder()
-                    .id(idName == null ? null : rs.getString(idName))
-                    .columns(columnsWithValue)
-                    .build();
-        };
-    }
+    private static final RowMapper<ColumnDetails> COLUMN_DETAILS_MAPPER = (rs, rowNum) -> {
+        String rawDefault = rs.getString("COLUMN_DEFAULT");
+        String colDefault = (rawDefault == null || rawDefault.isBlank()) ? rawDefault : rawDefault.replace("'", "");
+        if (StringUtils.equalsAnyIgnoreCase(colDefault, "null")) {
+            colDefault = null;
+        }
+        return new ColumnDetails(
+                rs.getString("COLUMN_NAME"),
+                rs.getString("COLUMN_TYPE"),
+                colDefault,
+                StringUtils.equalsAny(rs.getString("NULLABLE"), "YES", "Y"),
+                "YES".equals(rs.getString("AUTO_INCREMENT")));
+    };
 
-    private RowMapper<RecordData> fullRowMapper() {
-        return (rs, rowNum) -> {
-            HashMap<String, String> columns = new HashMap<>();
-            int columnCount = rs.getMetaData().getColumnCount();
-            for (int i = 1; i <= columnCount; i++) {
-                columns.put(rs.getMetaData().getColumnName(i), rs.getString(i));
-            }
-            return RecordData.builder().columns(columns).build();
-        };
-    }
+    private static final RowMapper<IndexDetails> INDEX_DETAILS_MAPPER = (rs, rowNum) -> {
+        String columns = rs.getString("COLUMNS");
+        return new IndexDetails(
+                rs.getString("TABLE_NAME"),
+                rs.getString("INDEX_NAME"),
+                columns == null ? null : columns.replace(" ", ""),
+                rs.getString("UNIQUE"));
+    };
 }

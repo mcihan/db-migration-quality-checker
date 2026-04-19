@@ -1,9 +1,9 @@
 # DB Migration Quality Checker
 
-[![CI](https://github.com/dbmigrationqualitychecker/db-migration-quality-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/dbmigrationqualitychecker/db-migration-quality-checker/actions/workflows/ci.yml)
+[![CI](https://github.com/mcihan/db-migration-quality-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/mcihan/db-migration-quality-checker/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://adoptium.net/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-6db33f.svg)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6db33f.svg)](https://spring.io/projects/spring-boot)
 
 A Spring Boot tool that verifies the quality of a **DB2 → MySQL** data migration by running a suite of parallel comparison checks across two live databases and producing a human‑readable report per check type.
 
@@ -233,9 +233,9 @@ select count(1) from SOURCE_SCHEMA.ORDERS
 ```
 .
 ├── docker/
-│   ├── Dockerfile                 # Multi-stage: Maven build + Temurin 21 JRE
+│   ├── Dockerfile                 # Multi-stage: Maven build + Temurin 25 JRE
 │   └── docker-compose.yml         # Local build, env-driven DB connections
-├── pom.xml                        # Spring Boot 3.4, Java 25
+├── pom.xml                        # Spring Boot 3.5, Java 25
 ├── data/
 │   └── tables.csv                 # Runtime input: which tables to check
 ├── src/main/java/com/dbmigrationqualitychecker/
