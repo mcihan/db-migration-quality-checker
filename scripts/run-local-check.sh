@@ -156,7 +156,7 @@ wait_healthy() {
 
 $needs_mysql     && wait_healthy "$MYSQL_CONTAINER"    120  2
 $needs_postgres  && wait_healthy "$POSTGRES_CONTAINER" 60   2
-$needs_db2       && { log "Waiting for DB2 (first boot can take 5–10 min)…"; wait_healthy "$DB2_CONTAINER" 900 15; }
+$needs_db2       && { log "Waiting for DB2 (first boot: 10–25 min on Apple Silicon under Rosetta)…"; wait_healthy "$DB2_CONTAINER" 1800 15; }
 
 # ---- Idempotent seeding per engine ----------------------------------------
 
