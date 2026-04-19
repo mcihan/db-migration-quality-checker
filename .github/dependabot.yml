@@ -16,6 +16,16 @@ updates:
       testcontainers:
         patterns:
           - "org.testcontainers:*"
+    ignore:
+      # Spring Boot 4.x requires a manual migration (Jakarta EE 11 baseline).
+      - dependency-name: "org.springframework.boot:*"
+        update-types: ["version-update:semver-major"]
+      # Spotless 3.x has breaking config changes.
+      - dependency-name: "com.diffplug.spotless:*"
+        update-types: ["version-update:semver-major"]
+      # Hold major bumps of commonly-disruptive plugins for manual review.
+      - dependency-name: "org.apache.maven.plugins:maven-*-plugin"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -25,6 +35,11 @@ updates:
     labels:
       - dependencies
       - github-actions
+    # Major bumps of actions frequently rename inputs or change behaviour —
+    # review them manually rather than auto-merging.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: "/docker"
@@ -34,3 +49,7 @@ updates:
     labels:
       - dependencies
       - docker
+    # Stay on Temurin 21 until we explicitly bump the project's Java target.
+    ignore:
+      - dependency-name: "eclipse-temurin"
+        update-types: ["version-update:semver-major"]

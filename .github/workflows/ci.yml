@@ -27,10 +27,7 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: maven
 
-      - name: Verify formatting
-        run: ./mvnw -B -ntp spotless:check
-
-      - name: Build + unit tests + fast IT
+      - name: Build + unit tests + fast IT (Spotless runs in verify phase)
         run: ./mvnw -B -ntp verify
 
       - name: Upload JaCoCo coverage report
