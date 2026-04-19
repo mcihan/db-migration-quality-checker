@@ -52,7 +52,7 @@
     <db2-driver-version>4.19.72</db2-driver-version>
     <!-- restricted, due to DB2 version -->
     <mysql.version>8.0.20</mysql.version>
-    <spotless.version>2.44.3</spotless.version>
+    <spotless.version>3.4.0</spotless.version>
     <jacoco.version>0.8.12</jacoco.version>
   </properties>
 
