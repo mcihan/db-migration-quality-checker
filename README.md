@@ -5,226 +5,246 @@
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://adoptium.net/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6db33f.svg)](https://spring.io/projects/spring-boot)
 
-A Spring Boot tool that verifies the quality of a **DB2 → MySQL** data migration by running a suite of parallel comparison checks across two live databases and producing a human‑readable report per check type.
+A Spring Boot tool that verifies the quality of a database migration between any two of **DB2**, **MySQL**, and **PostgreSQL**. Point it at a source and a target, it runs five parallel checks, and writes a human-readable report per check.
 
-It does **not** modify either database — it only reads from the source (DB2) and target (MySQL) and reports any discrepancies it finds.
+It **never writes to either database** — it only reads from both and reports any discrepancies.
+
+```
+┌─────────────────┐      ┌─────────────────────────┐      ┌─────────────────┐
+│  Source DB      │◄─────┤  db-migration-quality-  ├─────►│  Target DB      │
+│  DB2 │ MySQL │  │      │        checker          │      │  DB2 │ MySQL │  │
+│  Postgres       │      └────────────┬────────────┘      │  Postgres       │
+└─────────────────┘                   │                   └─────────────────┘
+                                      ▼
+                              ./report/*.txt
+```
+
+Any pair is valid: DB2→MySQL, DB2→Postgres, MySQL→Postgres, Postgres→DB2, … The engine of each side is picked at runtime from `SOURCE_TYPE` / `TARGET_TYPE`.
+
+---
+
+## Quick start
+
+```bash
+# 1. Boot local DB2 + MySQL + Postgres containers, seed sample data, run any pair:
+./scripts/run-local-check.sh                              # db2 → mysql
+./scripts/run-local-check.sh --source mysql --target postgres
+./scripts/run-local-check.sh --source postgres --target db2
+
+# 2. Read the reports:
+ls report/
+```
+
+Reports land in `report/<CHECK>_TEST_RESULT.txt`. Failures include the exact SQL that produced them so you can reproduce any mismatch by hand.
 
 ---
 
 ## What it checks
 
-For every table listed in `data/tables.csv`, the tool runs the following checks (in parallel, by default):
+For every table in `data/tables.csv`, five checks run in parallel:
 
 | # | Check | Report file | What it verifies |
 |---|-------|-------------|------------------|
-| 1 | **Column Name Comparison** | `COLUMN_NAME_COMPARISON_TEST_RESULT.txt` | Both sides expose the same set of column names (alphabetical compare). |
-| 2 | **Column Metadata Comparison** | `COLUMN_METADATA_COMPARISON_TEST_RESULT.txt` | For each column: data type, nullability, default value, and auto‑increment flag match (with known DB2↔MySQL type equivalences such as `CHARACTER`↔`CHAR`/`BINARY`, `TIMESTAMP`↔`TIMESTAMP`, `INT*`↔`INT*`). |
-| 3 | **Index Comparison** | `INDEX_COMPARISON_TEST_RESULT.txt` | Every DB2 index has a MySQL counterpart with the same column set and uniqueness. Warns when MySQL has extra indexes that DB2 does not. |
-| 4 | **Table Row Count Comparison** | `TABLE_ROW_COUNT_COMPARISON_TEST_RESULT.txt` | `COUNT(*)` on both sides matches (optionally filtered by a `WHERE` clause per table). |
-| 5 | **Random Data Comparison** | `RANDOM_DATA_COMPARISON_TEST_RESULT.txt` | Samples the first N rows from DB2 and verifies each row exists on MySQL with matching column values. When a primary key is provided, it looks up rows by ID (with optional HEX handling for UUID columns stored as `VARBINARY`); otherwise it matches on the full row. |
+| 1 | **Column names** | `COLUMN_NAME_COMPARISON_TEST_RESULT.txt` | Both sides expose the same set of column names (alphabetical compare, case-normalised). |
+| 2 | **Column metadata** | `COLUMN_METADATA_COMPARISON_TEST_RESULT.txt` | For each column: data type, nullability, default value, auto-increment flag. Known equivalences are applied (e.g. `INT*` ↔ `INT*`, `TIMESTAMP*` ↔ `TIMESTAMP*`, `CHARACTER` ↔ `CHAR`/`BINARY`). |
+| 3 | **Indexes** | `INDEX_COMPARISON_TEST_RESULT.txt` | Every source index has a target counterpart with the same column set and uniqueness. Warns if the target has extra indexes. |
+| 4 | **Row count** | `TABLE_ROW_COUNT_COMPARISON_TEST_RESULT.txt` | `COUNT(*)` matches on both sides (optionally filtered with a `WHERE` clause per table). |
+| 5 | **Random data** | `RANDOM_DATA_COMPARISON_TEST_RESULT.txt` | Samples the first N rows from the source and checks each row exists on the target with matching column values. Uses primary-key lookup if available (with optional hex decoding for UUID columns stored as binary); otherwise matches by full row. |
 
-Each report starts with a summary header (start/end time, duration, total/success/failure counts) and then lists per‑table `[Test PASSED]` / `[Test FAILED]` blocks — including the exact SQL queries used so failures can be reproduced by hand.
+Each report starts with a summary header (start/end time, duration, passed/failed counts) and then lists `[Test PASSED]` or `[Test FAILED]` blocks per table — each block includes the exact SQL queries used.
 
 ---
 
-## How it works
+## Supported engines
 
-```
-┌────────────┐       ┌──────────────────────────┐       ┌────────────┐
-│   DB2      │◄──────┤  db-migration-quality-   ├──────►│   MySQL    │
-│ (source)   │       │        checker           │       │ (target)   │
-└────────────┘       └────────────┬─────────────┘       └────────────┘
-                                  │
-                                  ▼
-                          ./report/*.txt
-```
+| Engine     | Driver dep (Maven Central)  | JDBC URL example                                     |
+|------------|-----------------------------|------------------------------------------------------|
+| **DB2**    | `com.ibm.db2:jcc`           | `jdbc:db2://host:50000/MYDB`                         |
+| **MySQL**  | `mysql:mysql-connector-java`| `jdbc:mysql://host:3306/mydb`                        |
+| **Postgres** | `org.postgresql:postgresql` | `jdbc:postgresql://host:5432/mydb`                   |
 
-- Entry point: [`DbMigrationQualityCheckerApplication`](src/main/java/com/dbmigrationqualitychecker/DbMigrationQualityCheckerApplication.java) — a `CommandLineRunner` that fans out the five checks onto `CompletableFuture`s and waits for them all.
-- Tables to check are loaded by [`TableProvider`](src/main/java/com/dbmigrationqualitychecker/service/TableProvider.java) from `data/tables.csv` (relative to the working directory).
-- Each DB is accessed via a separate `NamedParameterJdbcTemplate` configured in [`DBConfiguration`](src/main/java/com/dbmigrationqualitychecker/config/DBConfiguration.java).
-- Reports are written to `./report/<TYPE>_TEST_RESULT.txt` by [`ReportService`](src/main/java/com/dbmigrationqualitychecker/report/ReportService.java). The directory is created on demand.
+Switch engine on either side by changing one env var. The tool loads the right driver and dialect automatically.
+
+**Adding a new engine** is one new `DatabaseDialect` implementation + one enum case in `DataSourceConfig.dialectFor`. See [Extending](#extending) below.
 
 ---
 
 ## Requirements
 
-- **Java 25**
-- **Maven 3.9+** (a Maven wrapper `./mvnw` is included)
-- Network reachability to both a DB2 instance and a MySQL instance
-- Optional: **Docker** / **Docker Compose** if you prefer the containerised run
-- The IBM **DB2 JDBC driver** (`com.ibm.db2:jcc`) — pulled from Maven Central. Pin a different version if needed:
-
-  ```bash
-  ./mvnw package -Ddb2-driver-version=11.5.8.0
-  ```
+- **Java 25** (Temurin recommended)
+- **Maven 3.9+** (wrapper `./mvnw` included — no global Maven needed)
+- Network reachability to both databases
+- **Docker** / **Docker Compose** — optional, only for the containerised run and the local sandbox script
 
 ---
 
 ## Configuring the tables to check
 
-Create/edit `data/tables.csv` at the project root. Format:
+Create `data/tables.csv`:
 
 ```csv
 SourceSchema,TargetSchema,TableName,PrimaryKeyName,QueryCondition,IsHexId
 SOURCE_SCHEMA,TARGET_DB,USERS,ID,,false
-SOURCE_SCHEMA,TARGET_DB,ORDERS,ID,WHERE CREATED > '2024-01-01',false
+SOURCE_SCHEMA,TARGET_DB,ORDERS,ID,WHERE CREATED_AT > '2024-01-01',false
 SOURCE_SCHEMA,TARGET_DB,LOOKUP_TABLE,,,
 SOURCE_SCHEMA,TARGET_DB,USER_CARD,ID,,true
 ```
 
-Columns:
-
 | Column | Required | Description |
 |---|---|---|
-| `SourceSchema` | yes | DB2 schema name. |
-| `TargetSchema` | yes | MySQL schema/database name. |
+| `SourceSchema` | yes | Schema name on the source. For DB2 this is a schema; for MySQL it's the database; for Postgres it's typically `public`. |
+| `TargetSchema` | yes | Schema/database name on the target. |
 | `TableName` | yes | Name of the table; assumed identical on both sides. |
-| `PrimaryKeyName` | no | Primary key column. If provided, Random Data Comparison looks rows up by ID on MySQL instead of matching on every column. |
-| `QueryCondition` | no | Optional `WHERE …` clause appended to the row‑count query (e.g. `WHERE status='ACTIVE'`). |
-| `IsHexId` | no | `true` when the PK is stored as `VARBINARY`/UUID on MySQL and needs `lower(hex(id))` for lookups. |
+| `PrimaryKeyName` | no | PK column. If set, the random-data check does PK lookups on the target; otherwise it matches on the full row. |
+| `QueryCondition` | no | Optional `WHERE …` clause appended to the row-count query (e.g. `WHERE STATUS='ACTIVE'`). |
+| `IsHexId` | no | `true` when the PK is stored as binary/UUID on the target and needs `lower(hex(id))` / `lower(encode(id,'hex'))` for lookups. |
+
+> The `scripts/run-local-check.sh` helper generates this file automatically for whichever pair you pick.
 
 ---
 
 ## Configuration (environment variables)
 
-All settings are read from `src/main/resources/application.yml` and can be overridden via environment variables.
+All settings are read from `src/main/resources/application.yml` and can be overridden with environment variables.
 
 ### Database connections
 
-Source and target are DB-agnostic: set `SOURCE_TYPE` / `TARGET_TYPE` to either `DB2` or `MYSQL` and the app picks the right JDBC driver + dialect automatically.
+Source and target are engine-agnostic: set `SOURCE_TYPE` / `TARGET_TYPE` to one of `DB2`, `MYSQL`, `POSTGRES`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `SOURCE_TYPE` | `DB2` | Source database engine. One of `DB2`, `MYSQL`. |
+| `SOURCE_TYPE` | `DB2` | Source engine. One of `DB2`, `MYSQL`, `POSTGRES`. |
 | `SOURCE_JDBC_URL` | `jdbc:db2://localhost:50000/SOURCEDB` | Source JDBC URL. |
 | `SOURCE_USERNAME` | `db2user` | Source user. |
 | `SOURCE_PASSWORD` | `changeme` | Source password. |
-| `TARGET_TYPE` | `MYSQL` | Target database engine. One of `DB2`, `MYSQL`. |
+| `TARGET_TYPE` | `MYSQL` | Target engine. One of `DB2`, `MYSQL`, `POSTGRES`. |
 | `TARGET_JDBC_URL` | `jdbc:mysql://localhost:3306/TARGETDB` | Target JDBC URL. |
 | `TARGET_USERNAME` | `mysqluser` | Target user. |
 | `TARGET_PASSWORD` | `changeme` | Target password. |
 
-### Test selection / behaviour
+### Behaviour
 
-By default **all five checks run**. Set exactly one of the following to `true` to run only that check:
+By default **all five checks run**. Optionally run only one:
 
 | Variable | Default | Description |
 |---|---|---|
-| `ONLY_RUN_ROW_COUNT` | `false` | Run only the row‑count check. |
-| `ONLY_COLUMN_METADATA` | `false` | Run only the column metadata check. |
-| `ONLY_RANDOM_DATA` | `false` | Run only the random data check. |
-| `RANDOM_DATA_COUNT` | `10000` | Number of rows sampled per table for the random data check. |
-| `IS_INJECTED_TABLE_FILE_ACTIVE` | `false` | Flag used when mounting a custom `tables.csv` via volume. |
+| `ONLY_RUN_ROW_COUNT` | `false` | Run only the row-count check. |
+| `ONLY_COLUMN_METADATA` | `false` | Run only the column-metadata check. |
+| `ONLY_RANDOM_DATA` | `false` | Run only the random-data check. |
+| `RANDOM_DATA_COUNT` | `10000` | Rows sampled per table for the random-data check. |
+| `IS_INJECTED_TABLE_FILE_ACTIVE` | `false` | Flag for mounting a custom `tables.csv` via volume. |
 
-If multiple `ONLY_*` flags are `true`, the precedence is: row count → random data → column metadata (see the `if/else if` chain in `DbMigrationQualityCheckerApplication#compare`).
+If more than one `ONLY_*` is `true`, the first match in this order wins: row-count → random-data → column-metadata.
 
 ---
 
 ## Running the tool
 
-### Option A — Docker Compose (recommended)
+### Option A — Local sandbox script (easiest)
 
-The bundled `docker/docker-compose.yml` builds the image locally and mounts the two directories the app needs:
-
-- `./data` → `/app/data` — so the container reads your `tables.csv`.
-- `./report` → `/app/report` — so reports end up on your host.
-
-Edit the environment block in `docker/docker-compose.yml` to point at your DB2 / MySQL hosts and credentials, then:
+The helper script brings up the databases you need, seeds sample data, generates `data/tables.csv`, and runs the checker.
 
 ```bash
-# 1. Make sure data/tables.csv exists and lists the tables you want checked.
-mkdir -p data report
-# edit data/tables.csv ...
-
-# 2. Build and start. It runs once and exits.
-cd docker && docker compose up --build && cd ..
-
-# 3. Inspect results.
-ls report/
-#   COLUMN_NAME_COMPARISON_TEST_RESULT.txt
-#   COLUMN_METADATA_COMPARISON_TEST_RESULT.txt
-#   INDEX_COMPARISON_TEST_RESULT.txt
-#   TABLE_ROW_COUNT_COMPARISON_TEST_RESULT.txt
-#   RANDOM_DATA_COMPARISON_TEST_RESULT.txt
+./scripts/run-local-check.sh                              # db2 → mysql (default)
+./scripts/run-local-check.sh --source mysql --target postgres
+./scripts/run-local-check.sh --source postgres --target db2
+./scripts/run-local-check.sh --skip-up                    # containers already running
+./scripts/run-local-check.sh --down                       # stop (keep data)
+./scripts/run-local-check.sh --down-volumes               # stop + wipe data
 ```
 
-> **Note:** `host.docker.internal` is used in the defaults so the container can reach DBs running on the host machine (macOS/Windows). On Linux, either add `extra_hosts: ["host.docker.internal:host-gateway"]` to the compose service or replace with the actual host/IP.
+Only the engines the chosen pair uses are started — so `mysql ↔ postgres` never boots DB2 (which takes several minutes on first boot).
 
-### Option B — Local run with Maven
+### Option B — Local jar against your own DBs
 
 ```bash
-# 1. Build the fat jar (skipping tests).
 ./mvnw clean package -DskipTests
 
-# 2. Make sure data/tables.csv exists at the project root.
-
-# 3. Run, overriding any config via env vars.
-SOURCE_TYPE=DB2 \
-SOURCE_JDBC_URL="jdbc:db2://localhost:50000/SOURCEDB" \
-SOURCE_USERNAME=db2user SOURCE_PASSWORD=changeme \
+SOURCE_TYPE=POSTGRES \
+SOURCE_JDBC_URL="jdbc:postgresql://source-host:5432/mydb" \
+SOURCE_USERNAME=… SOURCE_PASSWORD=… \
 TARGET_TYPE=MYSQL \
-TARGET_JDBC_URL="jdbc:mysql://localhost:3306/TARGETDB" \
-TARGET_USERNAME=mysqluser TARGET_PASSWORD=changeme \
+TARGET_JDBC_URL="jdbc:mysql://target-host:3306/mydb" \
+TARGET_USERNAME=… TARGET_PASSWORD=… \
 RANDOM_DATA_COUNT=5000 \
 java -jar target/db-migration-quality-checker-1.0.0-SNAPSHOT.jar
 ```
 
-Reports will appear under `./report/`.
-
-To run only a single check:
-
-```bash
-ONLY_RUN_ROW_COUNT=true java -jar target/db-migration-quality-checker-1.0.0-SNAPSHOT.jar
-```
-
-### Option C — Build your own Docker image
+### Option C — Docker (for CI or ephemeral environments)
 
 ```bash
 docker build -f docker/Dockerfile -t db-migration-quality-checker:local .
+
 docker run --rm \
   -e SOURCE_TYPE=DB2 \
-  -e SOURCE_JDBC_URL="jdbc:db2://host.docker.internal:50000/SOURCEDB" \
-  -e SOURCE_USERNAME=db2user -e SOURCE_PASSWORD=changeme \
-  -e TARGET_TYPE=MYSQL \
-  -e TARGET_JDBC_URL="jdbc:mysql://host.docker.internal:3306/TARGETDB" \
-  -e TARGET_USERNAME=mysqluser -e TARGET_PASSWORD=changeme \
+  -e SOURCE_JDBC_URL="jdbc:db2://host.docker.internal:50000/MYDB" \
+  -e SOURCE_USERNAME=… -e SOURCE_PASSWORD=… \
+  -e TARGET_TYPE=POSTGRES \
+  -e TARGET_JDBC_URL="jdbc:postgresql://host.docker.internal:5432/mydb" \
+  -e TARGET_USERNAME=… -e TARGET_PASSWORD=… \
   -v "$PWD/data:/app/data" \
   -v "$PWD/report:/app/report" \
   db-migration-quality-checker:local
 ```
 
+> On Linux, `host.docker.internal` isn't resolved by default — add `--add-host=host.docker.internal:host-gateway` or use the real host IP.
+
 ### Option D — Tests only (no DBs required)
 
 ```bash
-./mvnw test            # 61 unit tests, < 10s
-./mvnw verify          # adds a fast MySQL-backed integration test (Testcontainers)
-./mvnw verify -Dgroups=integration  # also includes the heavier DB2 + MySQL end-to-end suite
+./mvnw test                          # 59 unit tests — runs in seconds
+./mvnw verify                        # adds MySQL + Postgres ITs and a cross-engine IT (~1 min)
+./mvnw verify -Dgroups=integration   # also runs the heavy DB2+MySQL end-to-end IT (slow)
 ```
 
 ---
 
 ## Reading a report
 
-Each report file starts with a summary header and is followed by `[Test PASSED]` or `[Test FAILED]` blocks separated by a line of dashes. Failed blocks include:
+Each report starts with a summary header, then blocks separated by a line of dashes. Every block contains:
 
-- A human‑readable description of the mismatch (e.g. `Total data count does not match. DB2: 1234, MYSQL: 1230, Diff: 4`).
-- The exact SQL query (or queries) used, so you can paste them straight into a DB client to investigate.
-- For the random‑data check, a `FAILURE DETAILS` section listing each failing column, DB2 value, and MySQL value.
+- A `[Test PASSED]` or `[Test FAILED]` marker + table name.
+- A human-readable description of the result.
+- The exact SQL queries used.
+- For random-data failures: a `FAILURE DETAILS` section listing each mismatching column, source value, and target value.
 
-Example (row‑count failure):
+Example (row-count failure):
 
 ```
 [Test FAILED] : ORDERS
 Total data count does not match.
-DB2:   1200345
-MYSQL: 1200340
+source: 1200345
+target: 1200340
 
-Diff:  5
-DB2 has more data.
+Diff:   5
+source has more data.
 
 QUERIES:
 select count(1) from SOURCE_SCHEMA.ORDERS
 ```
+
+---
+
+## How it works
+
+```
+DbMigrationQualityCheckerApplication
+            │
+            ▼
+       CheckRunner  ◄── one MigrationCheck per report type
+            │            (ColumnNamesCheck, IndexCheck, …)
+            ▼
+  for every Table in tables.csv:
+      check.execute(table) ──► CheckOutcome (Passed | Failed)
+            │
+            ▼
+       ReportWriter  ◄── default TextFileReportWriter writes .txt files
+```
+
+- **`MigrationCheck`** is a `(Table) → CheckOutcome` strategy. Each of the five checks is one tiny class. Add a new check by writing one more.
+- **`DatabaseDialect`** hides all SQL-dialect differences (system catalogs, pagination, type normalisation, binary-UUID handling). One impl per engine.
+- **`DatabaseRepository`** is a thin JDBC facade over a dialect + connection, parameterised by `Side.SOURCE` / `Side.TARGET` so each side uses its own schema field of `Table`.
+- **`ReportWriter`** is an interface — swap the default text file output for JSON/HTML later without touching any check.
 
 ---
 
@@ -234,22 +254,61 @@ select count(1) from SOURCE_SCHEMA.ORDERS
 .
 ├── docker/
 │   ├── Dockerfile                 # Multi-stage: Maven build + Temurin 25 JRE
-│   └── docker-compose.yml         # Local build, env-driven DB connections
-├── pom.xml                        # Spring Boot 3.5, Java 25
+│   ├── docker-compose.yml         # Runtime stack for production-like use
+│   ├── docker-compose.local.yml   # Local sandbox: DB2 + MySQL + Postgres
+│   └── seed/                      # DDL + sample data per engine
+│       ├── db2/01_schema.sql
+│       ├── mysql/01_schema.sql
+│       └── postgres/01_schema.sql
+├── scripts/
+│   └── run-local-check.sh         # Pair-aware local sandbox runner
 ├── data/
 │   └── tables.csv                 # Runtime input: which tables to check
+├── pom.xml                        # Spring Boot 3.5, Java 25
 ├── src/main/java/com/dbmigrationqualitychecker/
-│   ├── DbMigrationQualityCheckerApplication.java   # CLI runner, orchestrates checks
-│   ├── config/                    # DataSource + @Value wiring
-│   ├── repository/                # DB2 and MySQL JDBC access
-│   ├── service/                   # The 5 comparison services + TableProvider
-│   ├── report/                    # Report writer + Table/ReportType models
-│   └── util/                      # Row mappers, duration formatting
+│   ├── DbMigrationQualityCheckerApplication.java   # Spring Boot entry point
+│   ├── check/                     # MigrationCheck, CheckRunner, 5 *Check impls + support/
+│   ├── dialect/                   # DatabaseDialect + Db2Dialect / MySqlDialect / PostgresDialect
+│   ├── repository/                # DatabaseRepository (the generic JDBC facade)
+│   ├── model/                     # Records: Table, ColumnDetails, IndexDetails, QueryResult, RecordData
+│   ├── report/                    # ReportType + ReportWriter + TextFileReportWriter
+│   └── config/                    # DataSourceConfig (wires two sides from env vars)
 ├── src/main/resources/
-│   └── application.yml            # Default config + env var bindings
-├── src/test/                      # Unit + testcontainers-based integration tests
+│   └── application.yml            # Env-var bindings + defaults
+├── src/test/                      # Unit + Testcontainers integration tests
 └── .github/                       # CI workflows, issue + PR templates, dependabot
 ```
+
+---
+
+## Extending
+
+### Add a new check
+
+1. Create `check/NewCheck.java` implementing `MigrationCheck`:
+   ```java
+   @Component
+   class NewCheck implements MigrationCheck {
+       public ReportType reportType() { return ReportType.NEW_COMPARISON; }
+       public CheckOutcome execute(Table table) { … }
+   }
+   ```
+2. Add `NEW_COMPARISON` to `ReportType`.
+3. Done — Spring discovers it and the runner schedules it automatically.
+
+### Add a new database engine
+
+1. Add `ORACLE` (say) to `DatabaseType`.
+2. Create `dialect/OracleDialect implements DatabaseDialect`.
+3. Add one line in `DataSourceConfig.dialectFor(type)`: `case ORACLE -> new OracleDialect();`
+4. Add the JDBC driver dep to `pom.xml`.
+
+No other code changes needed.
+
+### Add a new report format
+
+1. Create `report/JsonReportWriter implements ReportWriter`, `@Component` it.
+2. Remove `@Component` from `TextFileReportWriter` (or use `@Primary` / profiles).
 
 ---
 
@@ -257,11 +316,11 @@ select count(1) from SOURCE_SCHEMA.ORDERS
 
 | Command | What runs | Typical duration |
 |---|---|---|
-| `./mvnw test` | All unit tests (61). | < 10s |
-| `./mvnw verify` | Unit + fast MySQL integration test. | ~1 min |
-| `./mvnw verify -Dgroups=integration` | Also runs the heavy DB2 + MySQL end-to-end suite. | 5–15 min first run, seconds on reuse |
+| `./mvnw test` | 59 unit tests — no Docker needed. | < 10 s |
+| `./mvnw verify` | Unit + fast ITs: MySQL, Postgres, MySQL↔Postgres cross-engine. | ~1 min |
+| `./mvnw verify -Dgroups=integration` | Also the heavy DB2 + MySQL end-to-end IT. | 5–15 min first run, seconds thereafter via container reuse |
 
-Testcontainers is configured for container reuse. One-time setup:
+Testcontainers reuse (one-time):
 
 ```bash
 echo "testcontainers.reuse.enable=true" >> ~/.testcontainers.properties
@@ -271,17 +330,18 @@ echo "testcontainers.reuse.enable=true" >> ~/.testcontainers.properties
 
 ## Troubleshooting
 
-- **`Couldn't read table csv file!`** — the tool could not find `data/tables.csv` in the working directory. When running with Docker, make sure you mounted `./data` to `/app/data` (the compose file already does this).
-- **Maven can't resolve `com.ibm.db2:jcc`** — check your `~/.m2/settings.xml` mirror configuration; the driver is on Maven Central.
-- **Random Data check is slow** — it reads `RANDOM_DATA_COUNT` rows per table from DB2. Lower it for quick smoke runs.
-- **Container can't reach local DBs on Linux** — `host.docker.internal` is not resolved by default; add `extra_hosts: ["host.docker.internal:host-gateway"]` to the compose service, or point the JDBC URLs at the real host/IP.
-- **`Column missing in MySQL` false positives** — the metadata check compares on column‑name equality; confirm both sides use matching casing (the MySQL query already upper‑cases names).
+- **`Couldn't read table csv file!`** — `data/tables.csv` not found in the working directory. With Docker, mount `./data` → `/app/data` (the compose file already does this).
+- **Maven can't resolve a driver** — all three drivers are on Maven Central; check your `~/.m2/settings.xml` mirror configuration.
+- **Random-data check is slow** — it reads `RANDOM_DATA_COUNT` rows per table from the source. Lower it for smoke runs.
+- **Container can't reach local DBs on Linux** — `host.docker.internal` isn't resolved by default; add `extra_hosts: ["host.docker.internal:host-gateway"]` to the compose service or use the real host IP.
+- **Column missing on one side, false positive** — column-name comparisons normalise to uppercase to paper over engine casing differences. If you still see false positives, double-check your `SourceSchema` / `TargetSchema` values in `tables.csv`.
+- **Postgres auto-increment not detected** — the metadata check recognises `SERIAL` / `IDENTITY` via the `nextval(…)` default convention; custom sequences won't be auto-detected.
 
 ---
 
 ## Contributing
 
-Contributions welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow, and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community guidelines. Report security issues via [`SECURITY.md`](SECURITY.md).
+Contributions welcome! See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community guidelines. Report security issues privately — see [`SECURITY.md`](SECURITY.md).
 
 ## License
 
