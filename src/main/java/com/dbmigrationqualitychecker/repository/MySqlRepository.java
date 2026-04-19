@@ -120,22 +120,22 @@ public class MySqlRepository {
 
     public List<ColumnDetails> getColumnDetails(Table table) {
         String sql = """
-                SELECT 
-                    UPPER(COLUMN_NAME) AS COLUMN_NAME, 
-                    UPPER(SUBSTRING_INDEX(COLUMN_TYPE, '(', 1)) AS COLUMN_TYPE, 
-                    IS_NULLABLE AS NULLABLE, 
-                    UPPER(SUBSTRING_INDEX(COLUMN_DEFAULT, '(', 1)) AS COLUMN_DEFAULT, 
+                SELECT
+                    UPPER(COLUMN_NAME) AS COLUMN_NAME,
+                    UPPER(SUBSTRING_INDEX(COLUMN_TYPE, '(', 1)) AS COLUMN_TYPE,
+                    IS_NULLABLE AS NULLABLE,
+                    UPPER(SUBSTRING_INDEX(COLUMN_DEFAULT, '(', 1)) AS COLUMN_DEFAULT,
                     CASE WHEN EXTRA LIKE '%auto_increment%' THEN 'YES' ELSE 'NO' END AS AUTO_INCREMENT
-                FROM INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_SCHEMA = '%s' AND 
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = '%s' AND
                 TABLE_NAME = '%s' """;
 
         String sql2 = """
-                SELECT 
-                    UPPER(COLUMN_NAME) AS COLUMN_NAME, 
-                    UPPER(SUBSTRING_INDEX(COLUMN_TYPE, '(', 1)) AS COLUMN_TYPE, 
-                    IS_NULLABLE AS NULLABLE, 
-                    UPPER(SUBSTRING_INDEX(COLUMN_DEFAULT, '(', 1)) AS COLUMN_DEFAULT, 
+                SELECT
+                    UPPER(COLUMN_NAME) AS COLUMN_NAME,
+                    UPPER(SUBSTRING_INDEX(COLUMN_TYPE, '(', 1)) AS COLUMN_TYPE,
+                    IS_NULLABLE AS NULLABLE,
+                    UPPER(SUBSTRING_INDEX(COLUMN_DEFAULT, '(', 1)) AS COLUMN_DEFAULT,
                     CASE WHEN EXTRA LIKE '%auto_increment%' THEN 'YES' ELSE 'NO' END AS AUTO_INCREMENT
                 FROM INFORMATION_SCHEMA.COLUMNS """ +
                 String.format(" WHERE TABLE_SCHEMA = '%s'", table.getTargetSchema()) +
@@ -147,12 +147,12 @@ public class MySqlRepository {
 
     public QueryResult<IndexDetails> getIndexDetails(Table table) {
         String sql = """
-                SELECT 
-                    TABLE_NAME, 
-                    INDEX_NAME, 
-                    GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS COLUMNS, 
+                SELECT
+                    TABLE_NAME,
+                    INDEX_NAME,
+                    GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS COLUMNS,
                     NON_UNIQUE as 'UNIQUE'
-                FROM INFORMATION_SCHEMA.STATISTICS 
+                FROM INFORMATION_SCHEMA.STATISTICS
                 WHERE TABLE_NAME = '%s' AND TABLE_SCHEMA = '%s'
                 GROUP BY TABLE_NAME, INDEX_NAME, NON_UNIQUE
                 """;

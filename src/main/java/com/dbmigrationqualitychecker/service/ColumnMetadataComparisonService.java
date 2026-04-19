@@ -45,7 +45,7 @@ public class ColumnMetadataComparisonService extends ComparisonServiceBase {
             }
             reportResult(COLUMN_METADATA_COMPARISON, successfulTestCount, failedTestCount, startTime);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("ColumnMetadataComparison aborted due to unexpected error", e);
         }
         log.info("ColumnMetadataComparison end!");
     }

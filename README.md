@@ -1,5 +1,10 @@
 # DB Migration Quality Checker
 
+[![CI](https://github.com/dbmigrationqualitychecker/db-migration-quality-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/dbmigrationqualitychecker/db-migration-quality-checker/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-6db33f.svg)](https://spring.io/projects/spring-boot)
+
 A Spring Boot tool that verifies the quality of a **DB2 → MySQL** data migration by running a suite of parallel comparison checks across two live databases and producing a human‑readable report per check type.
 
 It does **not** modify either database — it only reads from the source (DB2) and target (MySQL) and reports any discrepancies it finds.
@@ -47,22 +52,17 @@ Each report starts with a summary header (start/end time, duration, total/succes
 - **Maven 3.9+** (a Maven wrapper `./mvnw` is included)
 - Network reachability to both a DB2 instance and a MySQL instance
 - Optional: **Docker** / **Docker Compose** if you prefer the containerised run
-- The IBM **DB2 JDBC driver** — see the note below. The jar is bundled at the repo root for convenience.
+- The IBM **DB2 JDBC driver** — pulled via Maven (`com.ibm.db2:db2jcc4`). See below if your source server requires a different version.
 
 ### About the DB2 JDBC driver
 
-IBM's DB2 JDBC driver is not available on Maven Central under the coordinates this project uses. Because of IBM's redistribution terms, you must install the bundled driver into your local Maven repository once before building:
+The driver version is pinned in [`pom.xml`](pom.xml) (`db2-driver-version`) — `4.19.72` was chosen for compatibility with an older DB2 server. If your source DB2 is newer and requires a different driver, override the property:
 
 ```bash
-mvn install:install-file \
-  -Dfile=db2jcc4-4.19.72.jar \
-  -DgroupId=com.ibm.db2 \
-  -DartifactId=db2jcc4 \
-  -Dversion=4.19.72 \
-  -Dpackaging=jar
+./mvnw package -Ddb2-driver-version=11.5.9.0
 ```
 
-If your source DB2 is a newer server and you need a newer driver, install it under a version you choose and update the version in [`pom.xml`](pom.xml) accordingly. The `4.19.72` pin in this repo was chosen for compatibility with an older DB2 server.
+If your organisation's Maven mirror doesn't carry the IBM driver, add IBM's Maven repository to `~/.m2/settings.xml` or install a vendor-supplied jar with `mvn install:install-file`.
 
 ---
 
@@ -127,24 +127,22 @@ If multiple `ONLY_*` flags are `true`, the precedence is: row count → random d
 
 ### Option A — Docker Compose (recommended)
 
-The bundled `docker-compose.yml` builds the image locally and mounts the two directories the app needs:
+The bundled `docker/docker-compose.yml` builds the image locally and mounts the two directories the app needs:
 
 - `./data` → `/app/data` — so the container reads your `tables.csv`.
 - `./report` → `/app/report` — so reports end up on your host.
 
-Edit the environment block in `docker-compose.yml` to point at your DB2 / MySQL hosts and credentials, then:
+Edit the environment block in `docker/docker-compose.yml` to point at your DB2 / MySQL hosts and credentials, then:
 
 ```bash
 # 1. Make sure data/tables.csv exists and lists the tables you want checked.
 mkdir -p data report
 # edit data/tables.csv ...
 
-# 2. Install the DB2 driver to your local Maven repo (one-time, see above).
+# 2. Build and start. It runs once and exits.
+cd docker && docker compose up --build && cd ..
 
-# 3. Build and start. It runs once and exits.
-docker compose up --build
-
-# 4. Inspect results.
+# 3. Inspect results.
 ls report/
 #   COLUMN_NAME_COMPARISON_TEST_RESULT.txt
 #   COLUMN_METADATA_COMPARISON_TEST_RESULT.txt
@@ -158,20 +156,18 @@ ls report/
 ### Option B — Local run with Maven
 
 ```bash
-# 1. One-time: install the DB2 JDBC driver to your local Maven repo (see above).
-
-# 2. Build the fat jar (skipping tests).
+# 1. Build the fat jar (skipping tests).
 ./mvnw clean package -DskipTests
 
-# 3. Make sure data/tables.csv exists at the project root.
+# 2. Make sure data/tables.csv exists at the project root.
 
-# 4. Run, overriding any config via env vars.
+# 3. Run, overriding any config via env vars.
 DB2_JDBC_URL="jdbc:db2://localhost:50000/SOURCEDB" \
 DB2_USERNAME=db2user DB2_PASSWORD=changeme \
 MYSQL_JDBC_URL="jdbc:mysql://localhost:3306/TARGETDB" \
 MYSQL_USERNAME=mysqluser MYSQL_PASSWORD=changeme \
 RANDOM_DATA_COUNT=5000 \
-java -jar target/db-migration-quality-checker-0.0.1-SNAPSHOT.jar
+java -jar target/db-migration-quality-checker-1.0.0-SNAPSHOT.jar
 ```
 
 Reports will appear under `./report/`.
@@ -179,13 +175,13 @@ Reports will appear under `./report/`.
 To run only a single check:
 
 ```bash
-ONLY_RUN_ROW_COUNT=true java -jar target/db-migration-quality-checker-0.0.1-SNAPSHOT.jar
+ONLY_RUN_ROW_COUNT=true java -jar target/db-migration-quality-checker-1.0.0-SNAPSHOT.jar
 ```
 
 ### Option C — Build your own Docker image
 
 ```bash
-docker build -t db-migration-quality-checker:local .
+docker build -f docker/Dockerfile -t db-migration-quality-checker:local .
 docker run --rm \
   -e DB2_JDBC_URL="jdbc:db2://host.docker.internal:50000/SOURCEDB" \
   -e DB2_USERNAME=db2user -e DB2_PASSWORD=changeme \
@@ -194,6 +190,14 @@ docker run --rm \
   -v "$PWD/data:/app/data" \
   -v "$PWD/report:/app/report" \
   db-migration-quality-checker:local
+```
+
+### Option D — Tests only (no DBs required)
+
+```bash
+./mvnw test            # 61 unit tests, < 10s
+./mvnw verify          # adds a fast MySQL-backed integration test (Testcontainers)
+./mvnw verify -Dgroups=integration  # also includes the heavier DB2 + MySQL end-to-end suite
 ```
 
 ---
@@ -227,12 +231,12 @@ select count(1) from SOURCE_SCHEMA.ORDERS
 
 ```
 .
-├── Dockerfile                     # Multi-stage: Maven build + Temurin 21 JRE
-├── docker-compose.yml             # Local build, env-driven DB connections
+├── docker/
+│   ├── Dockerfile                 # Multi-stage: Maven build + Temurin 21 JRE
+│   └── docker-compose.yml         # Local build, env-driven DB connections
 ├── pom.xml                        # Spring Boot 3.4, Java 21
 ├── data/
 │   └── tables.csv                 # Runtime input: which tables to check
-├── db2jcc4-4.19.72.jar            # IBM DB2 JDBC driver (install-file first)
 ├── src/main/java/com/dbmigrationqualitychecker/
 │   ├── DbMigrationQualityCheckerApplication.java   # CLI runner, orchestrates checks
 │   ├── config/                    # DataSource + @Value wiring
@@ -242,17 +246,24 @@ select count(1) from SOURCE_SCHEMA.ORDERS
 │   └── util/                      # Row mappers, duration formatting
 ├── src/main/resources/
 │   └── application.yml            # Default config + env var bindings
-└── src/test/                      # Unit + testcontainers-based integration tests
+├── src/test/                      # Unit + testcontainers-based integration tests
+└── .github/                       # CI workflows, issue + PR templates, dependabot
 ```
 
 ---
 
 ## Tests
 
-Unit tests run as part of `./mvnw test`. Integration tests (grouped under the `integration` JUnit tag) use Testcontainers to spin up real DB2 and MySQL containers and run via Maven Failsafe:
+| Command | What runs | Typical duration |
+|---|---|---|
+| `./mvnw test` | All unit tests (61). | < 10s |
+| `./mvnw verify` | Unit + fast MySQL integration test. | ~1 min |
+| `./mvnw verify -Dgroups=integration` | Also runs the heavy DB2 + MySQL end-to-end suite. | 5–15 min first run, seconds on reuse |
+
+Testcontainers is configured for container reuse. One-time setup:
 
 ```bash
-./mvnw verify
+echo "testcontainers.reuse.enable=true" >> ~/.testcontainers.properties
 ```
 
 ---
@@ -260,14 +271,17 @@ Unit tests run as part of `./mvnw test`. Integration tests (grouped under the `i
 ## Troubleshooting
 
 - **`Couldn't read table csv file!`** — the tool could not find `data/tables.csv` in the working directory. When running with Docker, make sure you mounted `./data` to `/app/data` (the compose file already does this).
-- **Maven can't resolve `com.ibm.db2:db2jcc4:4.19.72`** — you haven't installed the bundled driver jar yet. See the *About the DB2 JDBC driver* section above.
-- **DB2 driver errors after upgrading the driver** — older DB2 servers require matching‑era clients. If you must upgrade, install the new jar under a new version and update `pom.xml`.
+- **Maven can't resolve `com.ibm.db2:db2jcc4`** — your Maven mirror may not carry IBM's driver. Add IBM's Maven repo to `~/.m2/settings.xml` or install a vendor-supplied jar locally with `mvn install:install-file`.
 - **Random Data check is slow** — it reads `RANDOM_DATA_COUNT` rows per table from DB2. Lower it for quick smoke runs.
 - **Container can't reach local DBs on Linux** — `host.docker.internal` is not resolved by default; add `extra_hosts: ["host.docker.internal:host-gateway"]` to the compose service, or point the JDBC URLs at the real host/IP.
 - **`Column missing in MySQL` false positives** — the metadata check compares on column‑name equality; confirm both sides use matching casing (the MySQL query already upper‑cases names).
 
 ---
 
+## Contributing
+
+Contributions welcome! Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow, and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community guidelines. Report security issues via [`SECURITY.md`](SECURITY.md).
+
 ## License
 
-MIT — see [`LICENSE`](LICENSE) (add one before publishing).
+Licensed under the Apache License, Version 2.0 — see [`LICENSE`](LICENSE).

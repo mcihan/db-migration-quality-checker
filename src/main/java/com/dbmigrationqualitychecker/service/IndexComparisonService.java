@@ -48,7 +48,7 @@ public class IndexComparisonService extends ComparisonServiceBase {
             }
             reportResult(INDEX_COMPARISON, successfulTestCount, failedTestCount, startTime);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("IndexComparison aborted due to unexpected error", e);
         }
         log.info("IndexComparison end!");
     }

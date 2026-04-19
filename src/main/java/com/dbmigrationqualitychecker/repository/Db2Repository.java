@@ -154,7 +154,7 @@ public class Db2Repository {
                         ELSE 'NO'
                     END AS AUTO_INCREMENT
                 FROM SYSCAT.COLUMNS
-                WHERE TABSCHEMA = '%s' 
+                WHERE TABSCHEMA = '%s'
                 AND TABNAME = '%s'""";
 
         sql = String.format(sql, table.getSourceSchema(), table.getTableName());
@@ -165,8 +165,8 @@ public class Db2Repository {
     public QueryResult<IndexDetails> getIndexDetails(Table table) {
         String sql = """
                 SELECT TABNAME AS TABLE_NAME,
-                    INDNAME AS INDEX_NAME, 
-                    LTRIM( REGEXP_REPLACE( REPLACE(COLNAMES, '-', ''), '[+]', ', ' ), ', ' )  AS COLUMNS, 
+                    INDNAME AS INDEX_NAME,
+                    LTRIM( REGEXP_REPLACE( REPLACE(COLNAMES, '-', ''), '[+]', ', ' ), ', ' )  AS COLUMNS,
                     CASE WHEN UNIQUERULE = 'D' THEN 1 ELSE 0 END AS UNIQUE
                 FROM SYSCAT.INDEXES
                 WHERE INDSCHEMA = '%s' AND TABNAME = '%s'

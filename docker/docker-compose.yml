@@ -1,10 +1,15 @@
 version: '3.8'
 
+# Run from the docker/ directory:
+#   docker compose up --build
+# The build context is the project root so the Dockerfile can access src/ and pom.xml.
+
 services:
   db-migration-quality-checker:
     container_name: db-migration-quality-checker
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
     environment:
       - DB2_JDBC_URL=jdbc:db2://host.docker.internal:50000/SOURCEDB
       - DB2_USERNAME=db2user
@@ -20,5 +25,5 @@ services:
 
       - RANDOM_DATA_COUNT=10000
     volumes:
-      - ./data:/app/data
-      - ./report:/app/report
+      - ../data:/app/data
+      - ../report:/app/report

@@ -5,7 +5,6 @@ import com.dbmigrationqualitychecker.report.ReportService;
 import com.dbmigrationqualitychecker.report.Table;
 import com.dbmigrationqualitychecker.repository.Db2Repository;
 import com.dbmigrationqualitychecker.repository.MySqlRepository;
-import com.dbmigrationqualitychecker.repository.entity.ColumnDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,7 +42,7 @@ public class ColumnNameComparisonService extends ComparisonServiceBase {
             }
             reportResult(COLUMN_NAME_COMPARISON, successfulTestCount, failedTestCount, startTime);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("ColumnNameComparison aborted due to unexpected error", e);
         }
         log.info("ColumnNameComparison end!");
     }
@@ -68,4 +67,3 @@ public class ColumnNameComparisonService extends ComparisonServiceBase {
     }
 
 }
-

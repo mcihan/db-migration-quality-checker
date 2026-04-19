@@ -46,7 +46,7 @@ public class TableProvider {
                             .isHexId(columns.length > 5 ? "true".equalsIgnoreCase(columns[5]) : false)
                             .build()).toList());
         } catch (IOException e) {
-            e.printStackTrace();
+            log.error("Failed to read table csv file: {}", path, e);
         }
         return Optional.empty();
     }
