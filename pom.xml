@@ -53,7 +53,7 @@
     <mysql.version>8.0.30</mysql.version>
     <lombok.version>1.18.46</lombok.version>
     <spotless.version>2.46.1</spotless.version>
-    <jacoco.version>0.8.14</jacoco.version>
+    <jacoco.version>0.8.15</jacoco.version>
   </properties>
 
   <dependencies>
